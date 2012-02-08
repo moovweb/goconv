@@ -1,0 +1,67 @@
+group		->	selector (',' selector)*
+
+selector	->	'>'? sequence (combinator sequence)*
+
+sequence	->	spaces? element qualifier*
+		->	spaces? qualifier+
+
+combinator	->	spaces? ('+' | '~' | '>')
+		->	spaces
+
+element		->	universal | type
+
+universal	->	LEXEME ('*')
+
+type		->	LEXEME (\w+)
+
+qualifier	->	attribute
+		->	class
+		->	id
+		->	pseudo-class
+
+attribute	->	LEXEME (complicated regexp)
+
+class		->	LEXEME ('.' identifier)
+
+id		->	LEXEME ('#' identifier)
+
+pseudo-class	->	':first-child'
+		->	':first-of-type'
+		->	(':nth-child' | 'nth-of-type') '(' predicate ')'
+		->	':not' '(' (element | qualifier) ')
+
+predicate	->	LEXEME(odd|even)
+		->	LEXEME([-+]?\d+n[-+]\d+)
+
+
+
+
+foo + bar + hux --> foo [+ bar] [+ hux]
+foo/following-sibling::*[1]/self::bar/following-sibling::*[1]/self::hux
+
+foo ~ bar ~ hux
+foo/following-sibling::bar/following-sibling::hux
+
+foo bar
+foo//bar
+
+foo > bar
+foo/bar
+
+
+:nth-child(an+b)
+*[(position() - b) mod a = 0]
+
+
+:not(div)
+*[not(./self::div)]
+
+:first-child
+*[position() = 1]
+:nth-child(4)
+*[position() = 4]
+
+:not(:first-child)
+*[not(position() = 1)]
+:not(:nth-child(4))
+*[not(position() = 4)]
