@@ -27,6 +27,9 @@ id		->	LEXEME ('#' identifier)
 
 pseudo-class	->	':first-child'
 		->	':first-of-type'
+		->	':only-child'
+		->	':only-of-type'
+		->	':empty'
 		->	(':nth-child' | 'nth-of-type') '(' predicate ')'
 		->	':not' '(' (element | qualifier) ')
 
