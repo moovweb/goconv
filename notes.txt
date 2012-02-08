@@ -1,40 +1,40 @@
-group		->	selector (',' selector)*
+group         ->  selector (',' selector)*
 
-selector	->	'>'? sequence (combinator sequence)*
+selector      ->  '>'? sequence (combinator sequence)*
 
-sequence	->	spaces? element qualifier*
-		->	spaces? qualifier+
+sequence      ->  spaces? element qualifier*
+              ->  spaces? qualifier+
 
-combinator	->	spaces? ('+' | '~' | '>')
-		->	spaces
+combinator    ->  spaces? ('+' | '~' | '>')
+              ->  spaces
 
-element		->	universal | type
+element       ->  universal | type
 
-universal	->	LEXEME ('*')
+universal     ->  LEXEME ('*')
 
-type		->	LEXEME (\w+)
+type          ->  LEXEME (\w+)
 
-qualifier	->	attribute
-		->	class
-		->	id
-		->	pseudo-class
+qualifier     ->  attribute
+              ->  class
+              ->  id
+              ->  pseudo-class
 
-attribute	->	LEXEME (complicated regexp)
+attribute     ->  LEXEME (complicated regexp)
 
-class		->	LEXEME ('.' identifier)
+class         ->  LEXEME ('.' identifier)
 
-id		->	LEXEME ('#' identifier)
+id            ->  LEXEME ('#' identifier)
 
-pseudo-class	->	':first-child'
-		->	':first-of-type'
-		->	':only-child'
-		->	':only-of-type'
-		->	':empty'
-		->	(':nth-child' | 'nth-of-type') '(' predicate ')'
-		->	':not' '(' (element | qualifier) ')
+pseudo-class  ->  ':first-child'
+              ->  ':first-of-type'
+              ->  ':only-child'
+              ->  ':only-of-type'
+              ->  ':empty'
+              ->  (':nth-child' | 'nth-of-type') '(' predicate ')'
+              ->  ':not' '(' (element | qualifier) ')
 
-predicate	->	LEXEME(odd|even)
-		->	LEXEME([-+]?\d+n[-+]\d+)
+predicate     ->  LEXEME(odd|even)
+              ->  LEXEME([-+]?\d+n[-+]\d+)
 
 
 
