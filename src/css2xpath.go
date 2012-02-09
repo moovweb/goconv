@@ -23,8 +23,7 @@ const (
   CONTAINS
   STARTS_WITH
   ENDS_WITH
-  CONTAINS_CLASS
-  
+  CONTAINS_CLASS  
   PSEUDO_CLASS
   FIRST_CHILD
   FIRST_OF_TYPE
@@ -76,15 +75,18 @@ func init() {
   pattern[ONLY_OF_TYPE]  = `:only-of-type`
   pattern[LAST_CHILD]    = `:last-child`
   pattern[LAST_OF_TYPE]  = `:last-of-type`
-  pattern[LPAREN]        = `\(`
-  pattern[RPAREN]        = `\)`
-  pattern[NUMBER]        = `[-+]?\d+`
+  pattern[LPAREN]        = `\s*\(`
+  pattern[RPAREN]        = `\s*\)`
+  pattern[COEFFICIENT]   = `[-+]?(\d+)?`
+  pattern[SIGNED]        = `[-+]?\d+`
+  pattern[UNSIGNED]      = `\d+`
   pattern[ODD]           = `odd`
   pattern[EVEN]          = `even`
   pattern[N]             = `[nN]`
   pattern[OPERATOR]      = `[-+]`
   pattern[PLUS]          = `\+`
   pattern[MINUS]         = `-`
+  patterm[BINOMIAL]      = strings.join([]string { pattern[SIGNED], pattern[N], pattern[OPERATOR], pattern[UNSIGNED] }, "")
   pattern[NOT]           = `:not`
   pattern[ADJACENT_TO]   = `\s*\+`
   pattern[PRECEDES]      = `\s*~`
@@ -182,10 +184,9 @@ func sequence(input []byte, scope Lexeme) (string, []byte) {
 }
 
 func qualifier(input []byte) (string, []byte, string) {
-  fmt.Println("QUALIFIER")
   p, connective := "", ""
   if t, remainder := token(CLASS, input); t != nil {
-    p = `contains(concat(" ", @class, " "), concat(" ", "` + string(t[1:]) + `", " "))`
+    p = `contains(concat(" ", @class, " "), " ` + string(t[1:]) + ` ")`
     input = remainder
     connective = " and "
   } else if t, remainder := token(ID, input); t != nil {
@@ -201,7 +202,6 @@ func qualifier(input []byte) (string, []byte, string) {
 func pseudoClass(input []byte) (string, []byte, string) {
   class, input := token(PSEUDO_CLASS, input)
   var p, connective string
-  fmt.Println("SWITCHING ON PSEUDOCLASS")
   switch string(class) {
   case ":first-child":
     p, connective = "position()=1", " and "
@@ -215,10 +215,58 @@ func pseudoClass(input []byte) (string, []byte, string) {
     p, connective = "position() = 1 and position() = last()", " and "
   case ":only-of-type":
     p, connective = "position() = 1 and position() = last()", "]["
+  case ":nth-child":
+    p, input = nth(input)
+    connective = " and "
+  case ":nth-of-type":
+    p, input = nth(input)
+    connective = "]["
   default:
     panic(`Cannot convert CSS pseudo-class "` + string(class) + `" to XPath.`)
   }
   return p, input, connective
+}
+
+func nth(input []byte) (string, []byte) {
+  lparen, input := token(LPAREN, input)
+  if lparen == nil {
+    panic(":nth-child and :nth-of-type require an parenthesized argument")
+  }
+  _, input = token(SPACES, input)
+  var expr string
+  if e, rem := token(EVEN, input); e != nil {
+    expr, input = "position() mod 2 = 0", rem
+  } else if e, rem := token(ODD, input); e != nil {
+    expr, input = "position() mod 2 = 1", rem
+  } else if e, _ := token(BINOMIAL, input); e != nil {
+    var coefficient, operator, constant []byte
+    coefficient, input = token(COEFFICIENT, input)
+    switch string(coefficient)) {
+    case "", "+":
+      coefficient = []byte("1")
+    case "-":
+      coefficient = []byte("-1")
+    }
+    _, input           = token(N, input)
+    _, input           = token(SPACES, input)
+    operator, input    = token(OPERATOR, input)
+    _, input           = token(SPACES, input)
+    constant, input    = token(UNSIGNED, input)
+    chunks := []string { "(position()", invert(string(operator)), string(constant), ") mod", string(coefficient), "= 0" }
+    expr = strings.Join(chunks, " ")
+  } else if e, rem := token(SIGNED, input) e != nil {
+    expr, input = 
+    
+}
+
+func invert(op string) string {
+  op = strings.TrimSpace(op)
+  if op == "+" {
+    op = "-"
+  } else {
+    op = "+"
+  }
+  return op
 }
 
 func attribute(input []byte) (string, []byte, string) {
@@ -240,7 +288,8 @@ func peek(lexeme Lexeme, input []byte) bool {
 }
 
 func main() {
-  sel := "div > span:first-child"
+  sel := "div + span:last-child, foo.bar"
   out, rem := selectors([]byte(sel), DEEP)
+  fmt.Println(sel)
   fmt.Println(out, string(rem))
 }
