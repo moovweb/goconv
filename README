@@ -1,0 +1,1 @@
+Simple library for converting CSS selectors into XPath. Just import it and call Convert(...)!
