@@ -1,0 +1,5 @@
+This is based on https://github.com/sloonz/go-iconv. It supports three different fallback policies when unrecognized sequences are encountered:
+
+1. Discard
+2. Keep as is
+3. Try another encoding to convert starting from the unrecognized sequences
