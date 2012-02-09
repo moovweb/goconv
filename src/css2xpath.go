@@ -1,6 +1,7 @@
-package css2xpath
+package main
 
 import (
+  "fmt"
 	"strings"
 	"rubex"
 )
@@ -39,6 +40,7 @@ const (
   ODD
   EVEN
   N
+  OPERATOR
   PLUS
   MINUS
   NOT
@@ -59,13 +61,13 @@ func init() {
   pattern[UNIVERSAL]     = `\*`
   pattern[TYPE]          = `[_a-zA-Z]\w*`
   pattern[ELEMENT]       = `(\*|[_a-zA-Z]\w*)`
-  pattern[CLASS]         = `\.[-_\w]+`
-  pattern[ID]            = `\#[-_\w]+`
+  pattern[CLASS]         = `\.[-\w]+`
+  pattern[ID]            = `\#[-\w]+`
   pattern[LBRACKET]      = `\[`
   pattern[RBRACKET]      = `\]`
   pattern[ATTR_NAME]     = `[-_:a-zA-Z][-\w:.]*`
   pattern[ATTR_VALUE]    = `("(\\.|[^"\\])*"|'(\\.|[^'\\])*')`
-  pattern[PSEUDO_CLASS]  = `:[-_a-zA-Z]+`
+  pattern[PSEUDO_CLASS]  = `:[-a-z]+`
   pattern[FIRST_CHILD]   = `:first-child`
   pattern[FIRST_OF_TYPE] = `:first-of-type`
   pattern[NTH_CHILD]     = `:nth-child`
@@ -80,6 +82,7 @@ func init() {
   pattern[ODD]           = `odd`
   pattern[EVEN]          = `even`
   pattern[N]             = `[nN]`
+  pattern[OPERATOR]      = `[-+]`
   pattern[PLUS]          = `\+`
   pattern[MINUS]         = `-`
   pattern[NOT]           = `:not`
@@ -92,102 +95,134 @@ func init() {
   }
 }
 
-func selectors(input []byte) (string, []byte) {
-  s, input := selector(input)
-  ss := []string { s }
+const (
+  DEEP = ANCESTOR_OF
+  FLAT = PARENT_OF
+)
+
+func selectors(input []byte, scope Lexeme) (string, []byte) {
+  x, input := selector(input, scope)
+  xs := []string { x }
   for peek(COMMA, input) {
     _, input = token(COMMA, input)
-    s, input = selector(input)
-    ss = append(ss, s)
+    x, input = selector(input, scope)
+    xs = append(xs, x)
   }
-  return strings.Join(ss, " | "), input
+  return strings.Join(xs, " | "), input
 }
 
-func selector(input []byte) (string, []byte) {
-  var ss []string
+func selector(input []byte, scope Lexeme) (string, []byte) {
+  var xs []string
   if matched, remainder := token(PARENT_OF, input); matched != nil {
-    ss, input = []string { "/" }, remainder
-  } else {
-    ss, input = []string { "//" }, remainder
+    xs, input = []string { "." }, remainder
   }
-  s, input := sequence(input)
-  ss = append(ss, s)
+  x, input := sequence(input, scope)
+  xs = append(xs, x)
   for {
     if matched, remainder := token(ADJACENT_TO, input); matched != nil {
-      ss, input = append(ss, "/following-sibling::*[1]/self::"), remainder
+      scope, input = ADJACENT_TO, remainder
     } else if matched, remainder := token(PRECEDES, input); matched != nil {
-      ss, input = append(ss, "/following-sibling::"), remainder
+      scope, input = PRECEDES, remainder
     } else if matched, remainder := token(PARENT_OF, input); matched != nil {
-      ss, input = append(ss, "/"), remainder
+      scope, input = PARENT_OF, remainder
     } else if matched, remainder := token(ANCESTOR_OF, input); matched != nil {
-      ss, input = append(ss, "//"), remainder
+      scope, input = ANCESTOR_OF, remainder
     } else {
       break
     }
-    s, input = sequence(input)
-    ss = append(ss, s)
+    x, input = sequence(input, scope)
+    xs = append(xs, x)
   }
-  return strings.Join(ss, ""), input
+  return strings.Join(xs, ""), input
 }
 
-func sequence(input []byte) (string, []byte) {
+func sequence(input []byte, scope Lexeme) (string, []byte) {
   _, input = token(SPACES, input)
-  s := "*"
-  if e, remainder := token(ELEMENT, input); e != nil {
-    if !(peek(ID, input) || peek(CLASS, input) || peek(PSEUDO_CLASS, input) || peek(LBRACKET, input)) {
-      return string(e), remainder
-    } else {
-      s, input = string(e), remainder
-    }
+  x, ps := "", []string { }
+  
+  switch scope {
+  case ANCESTOR_OF:
+    x = "/descendant-or-self::*/*"
+  case PARENT_OF:
+    x = "/child::*"
+  case PRECEDES:
+    x = "/following-sibling::*"
+  case ADJACENT_TO:
+    x = "/following-sibling::*"
+    ps = append(ps, "position()=1")
   }
-  q, input := qualifier(input, s)
+  
+  if e, remainder := token(ELEMENT, input); e != nil {
+    input = remainder
+    if len(ps) > 0 {
+      ps = append(ps, " and ")
+    }
+    ps = append(ps, "./self::" + string(e))
+    if !(peek(ID, input) || peek(CLASS, input) || peek(PSEUDO_CLASS, input) || peek(LBRACKET, input)) {
+      pstr := strings.Join(ps, "")
+      if pstr != "" {
+        pstr = "[" + pstr + "]"
+      }
+      return x + pstr, input
+    }    
+  }
+  q, input, connective := qualifier(input)
   if q == "" {
     panic("Invalid CSS selector")
   }
-  s += q
-  for q, r := qualifier(input, s); q != ""; q, r = qualifier(input, s) {
-    s, input = s + q, r
+  if len(ps) > 0 {
+    ps = append(ps, connective)
   }
-  return s, input
+  ps = append(ps, q)
+  for q, r, c := qualifier(input); q != ""; q, r, c = qualifier(input) {
+    ps, input = append(ps, c, q), r
+  }
+  pstr := "[" + strings.Join(ps, "") + "]"
+  return x + pstr, input
 }
 
-func qualifier(input []byte, element string) (string, []byte) {
-  s := ""
+func qualifier(input []byte) (string, []byte, string) {
+  fmt.Println("QUALIFIER")
+  p, connective := "", ""
   if t, remainder := token(CLASS, input); t != nil {
-    s = element + `[contains(@class, concat(" ", "` + string(t[1:]) + `", " "))]`
+    p = `contains(concat(" ", @class, " "), concat(" ", "` + string(t[1:]) + `", " "))`
     input = remainder
+    connective = " and "
   } else if t, remainder := token(ID, input); t != nil {
-    s, input = element + `[@id="` + string(t[1:]) + `"]`, remainder
+    p, input, connective = `@id="` + string(t[1:]) + `"`, remainder, " and "
   } else if peek(PSEUDO_CLASS, input) {
-    s, input = pseudoClass(input, element)
+    p, input, connective = pseudoClass(input)
   } else if peek(LBRACKET, input) {
-    attr, remainder := attribute(input)
-    s, input = element + attr, remainder
+    p, input, connective = attribute(input)
   }
-  return s, input
+  return p, input, connective
 }
 
-func pseudoClass(input []byte, element string) (string, []byte) {
-  pc, input := token(PSEUDO_CLASS, input)
-  switch string(pc) {
+func pseudoClass(input []byte) (string, []byte, string) {
+  class, input := token(PSEUDO_CLASS, input)
+  var p, connective string
+  fmt.Println("SWITCHING ON PSEUDOCLASS")
+  switch string(class) {
   case ":first-child":
-    element = "*[1][./self::" + element + "]"
+    p, connective = "position()=1", " and "
   case ":first-of-type":
-    element += "[1]"
+    p, connective = "position()=1", "]["
   case ":last-child":
-    element = "*[last()][./self::" + element + "]"
+    p, connective = "position()=last()", " and "
   case ":last-of-type":
-    element += "[last()]"
+    p, connective = "position()=last()", "]["
   case ":only-child":
-    element = "*[position() = 1 and position() = last()][./self::" + element + "]"
+    p, connective = "position() = 1 and position() = last()", " and "
   case ":only-of-type":
-    element += "[position() = 1 and position() = last()]"
+    p, connective = "position() = 1 and position() = last()", "]["
+  default:
+    panic(`Cannot convert CSS pseudo-class "` + string(class) + `" to XPath.`)
   }
-  return "", input
+  return p, input, connective
 }
 
-func attribute(input []byte) (string, []byte) {
-  return "", input
+func attribute(input []byte) (string, []byte, string) {
+  return "", input, ""
 }
 
 func token(lexeme Lexeme, input []byte) ([]byte, []byte) {
@@ -202,4 +237,10 @@ func token(lexeme Lexeme, input []byte) ([]byte, []byte) {
 func peek(lexeme Lexeme, input []byte) bool {
   matched, _ := token(lexeme, input)
   return matched != nil
+}
+
+func main() {
+  sel := "div > span:first-child"
+  out, rem := selectors([]byte(sel), DEEP)
+  fmt.Println(out, string(rem))
 }
