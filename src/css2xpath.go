@@ -18,6 +18,12 @@ const (
   RBRACKET
   ATTR_NAME
   ATTR_VALUE
+  EQUALS
+  CONTAINS
+  STARTS_WITH
+  ENDS_WITH
+  CONTAINS_CLASS
+  
   PSEUDO_CLASS
   FIRST_CHILD
   FIRST_OF_TYPE
@@ -99,7 +105,7 @@ func selectors(input []byte) (string, []byte) {
 
 func selector(input []byte) (string, []byte) {
   var ss []string
-  if matched, remainder := token(PARENT_OF, input); matched != "" {
+  if matched, remainder := token(PARENT_OF, input); matched != nil {
     ss, input = []string { "/" }, remainder
   } else {
     ss, input = []string { "//" }, remainder
@@ -107,13 +113,13 @@ func selector(input []byte) (string, []byte) {
   s, input := sequence(input)
   ss = append(ss, s)
   for {
-    if matched, remainder := token(ADJACENT_TO, input); matched != "" {
+    if matched, remainder := token(ADJACENT_TO, input); matched != nil {
       ss, input = append(ss, "/following-sibling::*[1]/self::"), remainder
-    } else if matched, remainder := token(PRECEDES, input); matched != "" {
+    } else if matched, remainder := token(PRECEDES, input); matched != nil {
       ss, input = append(ss, "/following-sibling::"), remainder
-    } else if matched, remainder := token(PARENT_OF, input); matched != "" {
+    } else if matched, remainder := token(PARENT_OF, input); matched != nil {
       ss, input = append(ss, "/"), remainder
-    } else if matched, remainder := token(ANCESTOR_OF, input); matched != "" {
+    } else if matched, remainder := token(ANCESTOR_OF, input); matched != nil {
       ss, input = append(ss, "//"), remainder
     } else {
       break
@@ -126,67 +132,74 @@ func selector(input []byte) (string, []byte) {
 
 func sequence(input []byte) (string, []byte) {
   _, input = token(SPACES, input)
-  ss := []string { }
-  if e, remainder := element(input); e != "" {
+  s := "*"
+  if e, remainder := token(ELEMENT, input); e != nil {
     if !(peek(ID, input) || peek(CLASS, input) || peek(PSEUDO_CLASS, input) || peek(LBRACKET, input)) {
-      return e, remainder
+      return string(e), remainder
     } else {
-      ss, input = []string { e }, remainder
+      s, input = string(e), remainder
     }
   }
-  q, input := qualifier(input)
-  ss = append(ss, q)
-  for q, r := qualifier(input); q != ""; q, r = qualifier(input) {
-    ss, input = append(ss, q), r
+  q, input := qualifier(input, s)
+  if q == "" {
+    panic("Invalid CSS selector")
   }
-  return strings.Join(ss, ""), input
+  s += q
+  for q, r := qualifier(input, s); q != ""; q, r = qualifier(input, s) {
+    s, input = s + q, r
+  }
+  return s, input
 }
 
-func element(input []byte) (result string, remainder []byte) {
-  t, input := token(ELEMENT, input)
-  if t == "" {
-    panic("Invalid CSS selector; expected a tag name or universal selector.")
+func qualifier(input []byte, element string) (string, []byte) {
+  s := ""
+  if t, remainder := token(CLASS, input); t != nil {
+    s = element + `[contains(@class, concat(" ", "` + string(t[1:]) + `", " "))]`
+    input = remainder
+  } else if t, remainder := token(ID, input); t != nil {
+    s, input = element + `[@id="` + string(t[1:]) + `"]`, remainder
+  } else if peek(PSEUDO_CLASS, input) {
+    s, input = pseudoClass(input, element)
+  } else if peek(LBRACKET, input) {
+    attr, remainder := attribute(input)
+    s, input = element + attr, remainder
   }
-  return t, input
+  return s, input
 }
 
-func qualifier(input []byte) (string, []byte) {
+func pseudoClass(input []byte, element string) (string, []byte) {
+  pc, input := token(PSEUDO_CLASS, input)
+  switch string(pc) {
+  case ":first-child":
+    element = "*[1][./self::" + element + "]"
+  case ":first-of-type":
+    element += "[1]"
+  case ":last-child":
+    element = "*[last()][./self::" + element + "]"
+  case ":last-of-type":
+    element += "[last()]"
+  case ":only-child":
+    element = "*[position() = 1 and position() = last()][./self::" + element + "]"
+  case ":only-of-type":
+    element += "[position() = 1 and position() = last()]"
+  }
   return "", input
 }
-    
 
-func token(lexeme Lexeme, input []byte) (string, []byte) {
+func attribute(input []byte) (string, []byte) {
+  return "", input
+}
+
+func token(lexeme Lexeme, input []byte) ([]byte, []byte) {
   matched := matcher[lexeme].Find(input)
-  return string(matched), input[len(matched):]
+  length := len(matched)
+  if length == 0 {
+    matched = nil
+  }
+  return matched, input[length:]
 }
 
 func peek(lexeme Lexeme, input []byte) bool {
   matched, _ := token(lexeme, input)
-  return matched != ""
+  return matched != nil
 }
-
-// type Parser func([]byte) ([]string, []byte)
-// 
-// func null(input []byte) ([]string, []byte) {
-//   return []string {}, input
-// }
-// 
-// func opt(p Parser) Parser {
-//   return alt(p, null)
-// }
-// 
-// func alt(first Parser, rest ...Parser) Parser {
-//   return func(input []byte) ([]string, []byte) {
-//     s, input := first(input)
-//     if s != nil {
-//       return s, input
-//     }
-//     for _, p := range rest {
-//       s, input = p(input)
-//       if s != nil {
-//         break
-//       }
-//     }
-//     return s, input
-//   }
-// }
