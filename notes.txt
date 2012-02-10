@@ -47,8 +47,48 @@ predicate     ->  LEXEME(odd|even)
 /*[position() = 1 and ./self::<A> and <B>]
 //*/*[position = 1 and ./self::<A> and <B>]
 
-<
 
+div, DEEP
+/descendant-or-self::*/*[./self::div]
+
+div, FLAT
+/child::*[./self::div]
+
+div span
+/descendant-or-self::*/*[./self::div] /descendant-or-self::*/*[./self::span]
+
+div > span
+/descendant-or-self::*/*[./self::div] /child::*[./self::span]
+
+div ~ span
+/descendant-or-self::*/*[./self::div] /following-sibling::*[./self::span]
+
+div + span
+/descendant-or-self::*/*[./self::div] /following-sibling::*[./self::span and position()=1]
+
+div:first-child, DEEP
+/descendant-or-self::*/*[./self::div and position()=1]
+
+div:first-child, FLAT
+/child::*[./self::div and position()=1]
+
+div:first-of-type, DEEP
+/descendant-or-self::*/*[./self::div][position()=1]
+
+div:last-of-type, DEEP
+/descendant-or-self::*/*[./self::div][position()=last()]
+
+
+div:nth-child(odd), DEEP
+/child::*[./self::div and position() mod 2 = 1]
+
+div:nth-child(a), DEEP
+/child::*[./self::div and position()=a]
+
+
+
+<A>:first-child
+descendant-or-self::*/*[./self::<A> and position()=1]
 
 
 <A>:first-child:last-child

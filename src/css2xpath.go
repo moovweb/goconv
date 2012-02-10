@@ -20,10 +20,12 @@ const (
   ATTR_NAME
   ATTR_VALUE
   EQUALS
-  CONTAINS
+  CONTAINS_CLASS  
+  DASH_PREFIXED
   STARTS_WITH
   ENDS_WITH
-  CONTAINS_CLASS  
+  CONTAINS
+  MATCH_OP
   PSEUDO_CLASS
   FIRST_CHILD
   FIRST_OF_TYPE
@@ -35,13 +37,16 @@ const (
   LAST_OF_TYPE
   LPAREN
   RPAREN
-  NUMBER
+  COEFFICIENT
+  SIGNED
+  UNSIGNED
   ODD
   EVEN
   N
   OPERATOR
   PLUS
   MINUS
+  BINOMIAL
   NOT
   ADJACENT_TO
   PRECEDES
@@ -55,43 +60,50 @@ var matcher [NUM_LEXEMES]*rubex.Regexp
 
 func init() {
   // some overlap in here, but it'll make the parsing functions clearer
-  pattern[SPACES]        = `\s+`
-  pattern[COMMA]         = `\s*,`
-  pattern[UNIVERSAL]     = `\*`
-  pattern[TYPE]          = `[_a-zA-Z]\w*`
-  pattern[ELEMENT]       = `(\*|[_a-zA-Z]\w*)`
-  pattern[CLASS]         = `\.[-\w]+`
-  pattern[ID]            = `\#[-\w]+`
-  pattern[LBRACKET]      = `\[`
-  pattern[RBRACKET]      = `\]`
-  pattern[ATTR_NAME]     = `[-_:a-zA-Z][-\w:.]*`
-  pattern[ATTR_VALUE]    = `("(\\.|[^"\\])*"|'(\\.|[^'\\])*')`
-  pattern[PSEUDO_CLASS]  = `:[-a-z]+`
-  pattern[FIRST_CHILD]   = `:first-child`
-  pattern[FIRST_OF_TYPE] = `:first-of-type`
-  pattern[NTH_CHILD]     = `:nth-child`
-  pattern[NTH_OF_TYPE]   = `:nth-of-type`
-  pattern[ONLY_CHILD]    = `:only-child`
-  pattern[ONLY_OF_TYPE]  = `:only-of-type`
-  pattern[LAST_CHILD]    = `:last-child`
-  pattern[LAST_OF_TYPE]  = `:last-of-type`
-  pattern[LPAREN]        = `\s*\(`
-  pattern[RPAREN]        = `\s*\)`
-  pattern[COEFFICIENT]   = `[-+]?(\d+)?`
-  pattern[SIGNED]        = `[-+]?\d+`
-  pattern[UNSIGNED]      = `\d+`
-  pattern[ODD]           = `odd`
-  pattern[EVEN]          = `even`
-  pattern[N]             = `[nN]`
-  pattern[OPERATOR]      = `[-+]`
-  pattern[PLUS]          = `\+`
-  pattern[MINUS]         = `-`
-  patterm[BINOMIAL]      = strings.join([]string { pattern[SIGNED], pattern[N], pattern[OPERATOR], pattern[UNSIGNED] }, "")
-  pattern[NOT]           = `:not`
-  pattern[ADJACENT_TO]   = `\s*\+`
-  pattern[PRECEDES]      = `\s*~`
-  pattern[PARENT_OF]     = `\s*>`
-  pattern[ANCESTOR_OF]   = `\s+`
+  pattern[SPACES]         = `\s+`
+  pattern[COMMA]          = `\s*,`
+  pattern[UNIVERSAL]      = `\*`
+  pattern[TYPE]           = `[_a-zA-Z]\w*`
+  pattern[ELEMENT]        = `(\*|[_a-zA-Z]\w*)`
+  pattern[CLASS]          = `\.[-\w]+`
+  pattern[ID]             = `\#[-\w]+`
+  pattern[LBRACKET]       = `\[`
+  pattern[RBRACKET]       = `\]`
+  pattern[ATTR_NAME]      = `[-_:a-zA-Z][-\w:.]*`
+  pattern[ATTR_VALUE]     = `("(\\.|[^"\\])*"|'(\\.|[^'\\])*')`
+  pattern[EQUALS]         = `=`
+  pattern[CONTAINS_CLASS] = `~=`
+  pattern[DASH_PREFIXED]  = `\|=`
+  pattern[STARTS_WITH]    = `\^=`
+  pattern[ENDS_WITH]      = `\$=`
+  pattern[CONTAINS]       = `\*=`
+  pattern[MATCH_OP]       = strings.Join([]string { "(", pattern[EQUALS], pattern[CONTAINS_CLASS], pattern[DASH_PREFIXED], pattern[STARTS_WITH], pattern[ENDS_WITH], pattern[CONTAINS], ")" }, "|")
+  pattern[PSEUDO_CLASS]   = `:[-a-z]+`
+  pattern[FIRST_CHILD]    = `:first-child`
+  pattern[FIRST_OF_TYPE]  = `:first-of-type`
+  pattern[NTH_CHILD]      = `:nth-child`
+  pattern[NTH_OF_TYPE]    = `:nth-of-type`
+  pattern[ONLY_CHILD]     = `:only-child`
+  pattern[ONLY_OF_TYPE]   = `:only-of-type`
+  pattern[LAST_CHILD]     = `:last-child`
+  pattern[LAST_OF_TYPE]   = `:last-of-type`
+  pattern[LPAREN]         = `\s*\(`
+  pattern[RPAREN]         = `\s*\)`
+  pattern[COEFFICIENT]    = `[-+]?(\d+)?`
+  pattern[SIGNED]         = `[-+]?\d+`
+  pattern[UNSIGNED]       = `\d+`
+  pattern[ODD]            = `odd`
+  pattern[EVEN]           = `even`
+  pattern[N]              = `[nN]`
+  pattern[OPERATOR]       = `[-+]`
+  pattern[PLUS]           = `\+`
+  pattern[MINUS]          = `-`
+  pattern[BINOMIAL]       = strings.Join([]string { pattern[COEFFICIENT], pattern[N], pattern[OPERATOR], pattern[UNSIGNED] }, "")
+  pattern[NOT]            = `:not`
+  pattern[ADJACENT_TO]    = `\s*\+`
+  pattern[PRECEDES]       = `\s*~`
+  pattern[PARENT_OF]      = `\s*>`
+  pattern[ANCESTOR_OF]    = `\s+`
   for i, p := range pattern {
     matcher[i], _ = rubex.Compile(`\A` + p)
   }
@@ -194,7 +206,8 @@ func qualifier(input []byte) (string, []byte, string) {
   } else if peek(PSEUDO_CLASS, input) {
     p, input, connective = pseudoClass(input)
   } else if peek(LBRACKET, input) {
-    p, input, connective = attribute(input)
+    p, input = attribute(input)
+    connective = " and "
   }
   return p, input, connective
 }
@@ -241,7 +254,7 @@ func nth(input []byte) (string, []byte) {
   } else if e, _ := token(BINOMIAL, input); e != nil {
     var coefficient, operator, constant []byte
     coefficient, input = token(COEFFICIENT, input)
-    switch string(coefficient)) {
+    switch string(coefficient) {
     case "", "+":
       coefficient = []byte("1")
     case "-":
@@ -252,11 +265,18 @@ func nth(input []byte) (string, []byte) {
     operator, input    = token(OPERATOR, input)
     _, input           = token(SPACES, input)
     constant, input    = token(UNSIGNED, input)
-    chunks := []string { "(position()", invert(string(operator)), string(constant), ") mod", string(coefficient), "= 0" }
-    expr = strings.Join(chunks, " ")
-  } else if e, rem := token(SIGNED, input) e != nil {
-    expr, input = 
-    
+    chunks := []string { "(position()", invert(string(operator)), string(constant), ") mod ", string(coefficient), " = 0" }
+    expr = strings.Join(chunks, "")
+  } else if e, rem := token(SIGNED, input); e != nil {
+    expr, input = "position() = " + string(e), rem
+  } else {
+    panic("Invalid argument to :nth-child/:nth-of-type.")
+  }
+  rparen, input := token(RPAREN, input)
+  if rparen == nil {
+    panic("Unterminated argument to :nth-child/:nth-of-type.")
+  }
+  return expr, input
 }
 
 func invert(op string) string {
@@ -269,8 +289,49 @@ func invert(op string) string {
   return op
 }
 
-func attribute(input []byte) (string, []byte, string) {
-  return "", input, ""
+func attribute(input []byte) (string, []byte) {
+  _, input = token(LBRACKET, input)
+  _, input = token(SPACES, input)
+  name, input := token(ATTR_NAME, input)
+  if name == nil {
+    panic("Attribute selector requires an attribute name.")
+  }
+  _, input = token(SPACES, input)
+  if rbracket, remainder := token(RBRACKET, input); rbracket != nil {
+    return "@" + string(name), remainder
+  }
+  op, input := token(MATCH_OP, input)
+  if op == nil {
+    panic("Missing operator in attribute selector.")
+  }
+  _, input = token(SPACES, input)
+  val, input := token(ATTR_VALUE, input)
+  if val == nil {
+    panic("Missing value in attribute selector.")
+  }
+  _, input = token(SPACES, input)
+  rbracket, input := token(RBRACKET, input)
+  if rbracket == nil {
+    panic("Unterminated attribute selector.")
+  }
+  var expr string
+  n, v := string(name), string(val)
+  switch(string(op)) {
+  case "=":
+    expr = "@" + n + "=" + v
+  case "~=":
+    expr = `contains(concat(" ", @` + n + `, " "), concat(" ", ` + v + `, " "))`
+  case "|=":
+    expr = "(@" + n + "=" + v + " or " + "starts-with(@" + n + ", concat(" + v + `, "-")))`
+  case "^=":
+    expr = fmt.Sprintf("starts-with(@%s, %s)", n, v)
+  case "$=":
+    // oy, libxml doesn't support ends-with
+    expr = fmt.Sprintf("substring(@%s, string-length(@%s) - string-length(%s) + 1) = %s", n, n, v, v)
+  case "*=":
+    expr = fmt.Sprintf("contains(@%s, %s)", n, v)
+  }
+  return expr, input
 }
 
 func token(lexeme Lexeme, input []byte) ([]byte, []byte) {
@@ -288,7 +349,7 @@ func peek(lexeme Lexeme, input []byte) bool {
 }
 
 func main() {
-  sel := "div + span:last-child, foo.bar"
+  sel := "div:nth-child(-3n+5), span:nth-of-type(+n-2)"
   out, rem := selectors([]byte(sel), DEEP)
   fmt.Println(sel)
   fmt.Println(out, string(rem))
