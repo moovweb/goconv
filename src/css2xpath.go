@@ -1,4 +1,5 @@
 package css2xpath
+// package main
 
 import (
   "fmt"
@@ -35,6 +36,7 @@ const (
   ONLY_OF_TYPE
   LAST_CHILD
   LAST_OF_TYPE
+  NOT
   LPAREN
   RPAREN
   COEFFICIENT
@@ -47,7 +49,6 @@ const (
   PLUS
   MINUS
   BINOMIAL
-  NOT
   ADJACENT_TO
   PRECEDES
   PARENT_OF
@@ -87,6 +88,7 @@ func init() {
   pattern[ONLY_OF_TYPE]   = `:only-of-type`
   pattern[LAST_CHILD]     = `:last-child`
   pattern[LAST_OF_TYPE]   = `:last-of-type`
+  pattern[NOT]            = `:not`
   pattern[LPAREN]         = `\s*\(`
   pattern[RPAREN]         = `\s*\)`
   pattern[COEFFICIENT]    = `[-+]?(\d+)?`
@@ -98,8 +100,7 @@ func init() {
   pattern[OPERATOR]       = `[-+]`
   pattern[PLUS]           = `\+`
   pattern[MINUS]          = `-`
-  pattern[BINOMIAL]       = strings.Join([]string { pattern[COEFFICIENT], pattern[N], pattern[OPERATOR], pattern[UNSIGNED] }, "")
-  pattern[NOT]            = `:not`
+  pattern[BINOMIAL]       = strings.Join([]string { pattern[COEFFICIENT], pattern[N], `\s*`, pattern[OPERATOR], `\s*`, pattern[UNSIGNED] }, "")
   pattern[ADJACENT_TO]    = `\s*\+`
   pattern[PRECEDES]       = `\s*~`
   pattern[PARENT_OF]      = `\s*>`
@@ -109,12 +110,18 @@ func init() {
   }
 }
 
+type Scope int
 const (
-  DEEP = ANCESTOR_OF
-  FLAT = PARENT_OF
+  GLOBAL = iota
+  LOCAL
 )
 
-func selectors(input []byte, scope Lexeme) (string, []byte) {
+func Convert(css string, scope Scope) string {
+  xpath, _ := selectors([]byte(css), scope)
+  return xpath
+}
+
+func selectors(input []byte, scope Scope) (string, []byte) {
   x, input := selector(input, scope)
   xs := []string { x }
   for peek(COMMA, input) {
@@ -125,36 +132,42 @@ func selectors(input []byte, scope Lexeme) (string, []byte) {
   return strings.Join(xs, " | "), input
 }
 
-func selector(input []byte, scope Lexeme) (string, []byte) {
+func selector(input []byte, scope Scope) (string, []byte) {
+  var combinator Lexeme
   var xs []string
-  if matched, remainder := token(PARENT_OF, input); matched != nil {
-    xs, input = []string { "." }, remainder
+  if scope == LOCAL {
+    xs = []string { "." }
   }
-  x, input := sequence(input, scope)
+  if matched, remainder := token(PARENT_OF, input); matched != nil {
+    combinator, input = PARENT_OF, remainder
+  } else {
+    combinator = ANCESTOR_OF
+  }
+  x, input := sequence(input, combinator)
   xs = append(xs, x)
   for {
     if matched, remainder := token(ADJACENT_TO, input); matched != nil {
-      scope, input = ADJACENT_TO, remainder
+      combinator, input = ADJACENT_TO, remainder
     } else if matched, remainder := token(PRECEDES, input); matched != nil {
-      scope, input = PRECEDES, remainder
+      combinator, input = PRECEDES, remainder
     } else if matched, remainder := token(PARENT_OF, input); matched != nil {
-      scope, input = PARENT_OF, remainder
+      combinator, input = PARENT_OF, remainder
     } else if matched, remainder := token(ANCESTOR_OF, input); matched != nil {
-      scope, input = ANCESTOR_OF, remainder
+      combinator, input = ANCESTOR_OF, remainder
     } else {
       break
     }
-    x, input = sequence(input, scope)
+    x, input = sequence(input, combinator)
     xs = append(xs, x)
   }
   return strings.Join(xs, ""), input
 }
 
-func sequence(input []byte, scope Lexeme) (string, []byte) {
+func sequence(input []byte, combinator Lexeme) (string, []byte) {
   _, input = token(SPACES, input)
   x, ps := "", []string { }
   
-  switch scope {
+  switch combinator {
   case ANCESTOR_OF:
     x = "/descendant-or-self::*/*"
   case PARENT_OF:
@@ -171,7 +184,7 @@ func sequence(input []byte, scope Lexeme) (string, []byte) {
     if len(ps) > 0 {
       ps = append(ps, " and ")
     }
-    ps = append(ps, "./self::" + string(e))
+    ps = append(ps, "self::" + string(e))
     if !(peek(ID, input) || peek(CLASS, input) || peek(PSEUDO_CLASS, input) || peek(LBRACKET, input)) {
       pstr := strings.Join(ps, "")
       if pstr != "" {
@@ -191,7 +204,10 @@ func sequence(input []byte, scope Lexeme) (string, []byte) {
   for q, r, c := qualifier(input); q != ""; q, r, c = qualifier(input) {
     ps, input = append(ps, c, q), r
   }
-  pstr := fmt.Sprintf("[%s]", strings.Join(ps, ""))
+  pstr := strings.Join(ps, "")
+  if combinator != NOT {
+    pstr = fmt.Sprintf("[%s]", pstr)
+  }
   return x + pstr, input
 }
 
@@ -234,6 +250,9 @@ func pseudoClass(input []byte) (string, []byte, string) {
   case ":nth-of-type":
     p, input = nth(input)
     connective = "]["
+  case ":not":
+    p, input = negate(input)
+    connective = " and "
   default:
     panic(`Cannot convert CSS pseudo-class "` + string(class) + `" to XPath.`)
   }
@@ -260,20 +279,22 @@ func nth(input []byte) (string, []byte) {
     case "-":
       coefficient = []byte("-1")
     }
-    _, input           = token(N, input)
-    _, input           = token(SPACES, input)
-    operator, input    = token(OPERATOR, input)
-    _, input           = token(SPACES, input)
-    constant, input    = token(UNSIGNED, input)
+    _, input        = token(N, input)
+    _, input        = token(SPACES, input)
+    operator, input = token(OPERATOR, input)
+    _, input        = token(SPACES, input)
+    constant, input = token(UNSIGNED, input)
     expr = fmt.Sprintf("(position() %s %s) mod %s = 0", invert(string(operator)), string(constant), string(coefficient))
   } else if e, rem := token(SIGNED, input); e != nil {
     expr, input = "position() = " + string(e), rem
   } else {
-    panic("Invalid argument to :nth-child/:nth-of-type.")
+    panic("Invalid argument to :nth-child or :nth-of-type.")
   }
+  fmt.Println(string(input))
+  _, input = token(SPACES, input)
   rparen, input := token(RPAREN, input)
   if rparen == nil {
-    panic("Unterminated argument to :nth-child/:nth-of-type.")
+    panic("Unterminated argument to :nth-child or :nth-of-type.")
   }
   return expr, input
 }
@@ -286,6 +307,22 @@ func invert(op string) string {
     op = "+"
   }
   return op
+}
+
+func negate(input []byte) (string, []byte) {
+  _, input = token(SPACES, input)
+  lparen, input := token(LPAREN, input)
+  if lparen == nil {
+    panic(":not requires a parenthesized argument.")
+  }
+  _, input = token(SPACES, input)
+  p, input := sequence(input, NOT)
+  _, input = token(SPACES, input)
+  rparen, input := token(RPAREN, input)
+  if rparen == nil {
+    panic("Unterminated argument to :not.")
+  }
+  return fmt.Sprintf("not(%s)", p), input
 }
 
 func attribute(input []byte) (string, []byte) {
@@ -326,6 +363,7 @@ func attribute(input []byte) (string, []byte) {
     expr = fmt.Sprintf("starts-with(@%s, %s)", n, v)
   case "$=":
     // oy, libxml doesn't support ends-with
+    // generate something like: div[substring(@class, string-length(@class) - string-length('foo') + 1) = 'foo']
     expr = fmt.Sprintf("substring(@%s, string-length(@%s) - string-length(%s) + 1) = %s", n, n, v, v)
   case "*=":
     expr = fmt.Sprintf("contains(@%s, %s)", n, v)
@@ -348,8 +386,39 @@ func peek(lexeme Lexeme, input []byte) bool {
 }
 
 // func main() {
-//   sel := "#bar .foo[grep~='blah']"
-//   out, rem := selectors([]byte(sel), DEEP)
-//   fmt.Println(sel)
-//   fmt.Println(out, string(rem))
+//   ss := []string {
+//     "div",
+//     "> div",
+//     "div, > span",
+//     "div.foo",
+//     "div.foo.bar",
+//     "div#foo",
+//     "div#foo.bar#hux",
+//     "> div#foo.bar#hux",
+//     ".bar",
+//     ":first-child",
+//     "div:first-child",
+//     "div:nth-child(odd)",
+//     "div:nth-child(even)",
+//     "div:nth-child(2n + 1)",
+//     "div:nth-child(-3n-6)",
+//     "div:nth-of-type(5)",
+//     ":nth-child(4)",
+//     "div :nth-child(2)",
+//     "div[a='b']",
+//     "div[a~='b']",
+//     "div[a|='b']",
+//     "div[a*='b']",
+//     "div[a ^= 'b' ]",
+//     "div   [ a $= 'b' ]",
+//     "> :only-of-type",
+//     "div[a='b']:first-of-type.foo", // generates xpath that behaves differently from the css
+//     "div.bar:not(#foo:first-child)",
+//   }
+//   
+//   for _, s := range ss {
+//     fmt.Println(Convert(s, GLOBAL))
+//     fmt.Println(Convert(s, LOCAL))
+//     fmt.Println("\n")
+//   }
 // }
