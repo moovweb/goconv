@@ -1,4 +1,4 @@
-package main
+package css2xpath
 
 import (
   "fmt"
@@ -265,8 +265,6 @@ func nth(input []byte) (string, []byte) {
     operator, input    = token(OPERATOR, input)
     _, input           = token(SPACES, input)
     constant, input    = token(UNSIGNED, input)
-    // chunks := []string { "(position()", invert(string(operator)), string(constant), ") mod ", string(coefficient), " = 0" }
-    // expr = strings.Join(chunks, "")
     expr = fmt.Sprintf("(position() %s %s) mod %s = 0", invert(string(operator)), string(constant), string(coefficient))
   } else if e, rem := token(SIGNED, input); e != nil {
     expr, input = "position() = " + string(e), rem
@@ -303,7 +301,7 @@ func attribute(input []byte) (string, []byte) {
   }
   op, input := token(MATCH_OP, input)
   if op == nil {
-    panic("Missing operator in attribute selector." + string(input))
+    panic("Missing operator in attribute selector.")
   }
   _, input = token(SPACES, input)
   val, input := token(ATTR_VALUE, input)
@@ -349,10 +347,9 @@ func peek(lexeme Lexeme, input []byte) bool {
   return matched != nil
 }
 
-func main() {
-  fmt.Println(pattern[MATCH_OP])
-  sel := "div span[foo='bar']"
-  out, rem := selectors([]byte(sel), DEEP)
-  fmt.Println(sel)
-  fmt.Println(out, string(rem))
-}
+// func main() {
+//   sel := "#bar .foo[grep~='blah']"
+//   out, rem := selectors([]byte(sel), DEEP)
+//   fmt.Println(sel)
+//   fmt.Println(out, string(rem))
+// }
