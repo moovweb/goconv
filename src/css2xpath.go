@@ -77,7 +77,7 @@ func init() {
   pattern[STARTS_WITH]    = `\^=`
   pattern[ENDS_WITH]      = `\$=`
   pattern[CONTAINS]       = `\*=`
-  pattern[MATCH_OP]       = strings.Join([]string { "(", pattern[EQUALS], pattern[CONTAINS_CLASS], pattern[DASH_PREFIXED], pattern[STARTS_WITH], pattern[ENDS_WITH], pattern[CONTAINS], ")" }, "|")
+  pattern[MATCH_OP]       = "(" + strings.Join([]string { pattern[EQUALS], pattern[CONTAINS_CLASS], pattern[DASH_PREFIXED], pattern[STARTS_WITH], pattern[ENDS_WITH], pattern[CONTAINS] }, "|") + ")"
   pattern[PSEUDO_CLASS]   = `:[-a-z]+`
   pattern[FIRST_CHILD]    = `:first-child`
   pattern[FIRST_OF_TYPE]  = `:first-of-type`
@@ -175,7 +175,7 @@ func sequence(input []byte, scope Lexeme) (string, []byte) {
     if !(peek(ID, input) || peek(CLASS, input) || peek(PSEUDO_CLASS, input) || peek(LBRACKET, input)) {
       pstr := strings.Join(ps, "")
       if pstr != "" {
-        pstr = "[" + pstr + "]"
+        pstr = fmt.Sprintf("[%s]", pstr)
       }
       return x + pstr, input
     }    
@@ -191,18 +191,18 @@ func sequence(input []byte, scope Lexeme) (string, []byte) {
   for q, r, c := qualifier(input); q != ""; q, r, c = qualifier(input) {
     ps, input = append(ps, c, q), r
   }
-  pstr := "[" + strings.Join(ps, "") + "]"
+  pstr := fmt.Sprintf("[%s]", strings.Join(ps, ""))
   return x + pstr, input
 }
 
 func qualifier(input []byte) (string, []byte, string) {
   p, connective := "", ""
   if t, remainder := token(CLASS, input); t != nil {
-    p = `contains(concat(" ", @class, " "), " ` + string(t[1:]) + ` ")`
+    p = fmt.Sprintf(`contains(concat(" ", @class, " "), " %s ")`, string(t[1:]))
     input = remainder
     connective = " and "
   } else if t, remainder := token(ID, input); t != nil {
-    p, input, connective = `@id="` + string(t[1:]) + `"`, remainder, " and "
+    p, input, connective = fmt.Sprintf(`@id="%s"`, string(t[1:])), remainder, " and "
   } else if peek(PSEUDO_CLASS, input) {
     p, input, connective = pseudoClass(input)
   } else if peek(LBRACKET, input) {
@@ -265,8 +265,9 @@ func nth(input []byte) (string, []byte) {
     operator, input    = token(OPERATOR, input)
     _, input           = token(SPACES, input)
     constant, input    = token(UNSIGNED, input)
-    chunks := []string { "(position()", invert(string(operator)), string(constant), ") mod ", string(coefficient), " = 0" }
-    expr = strings.Join(chunks, "")
+    // chunks := []string { "(position()", invert(string(operator)), string(constant), ") mod ", string(coefficient), " = 0" }
+    // expr = strings.Join(chunks, "")
+    expr = fmt.Sprintf("(position() %s %s) mod %s = 0", invert(string(operator)), string(constant), string(coefficient))
   } else if e, rem := token(SIGNED, input); e != nil {
     expr, input = "position() = " + string(e), rem
   } else {
@@ -302,7 +303,7 @@ func attribute(input []byte) (string, []byte) {
   }
   op, input := token(MATCH_OP, input)
   if op == nil {
-    panic("Missing operator in attribute selector.")
+    panic("Missing operator in attribute selector." + string(input))
   }
   _, input = token(SPACES, input)
   val, input := token(ATTR_VALUE, input)
@@ -318,11 +319,11 @@ func attribute(input []byte) (string, []byte) {
   n, v := string(name), string(val)
   switch(string(op)) {
   case "=":
-    expr = "@" + n + "=" + v
+    expr = fmt.Sprintf("@%s=%s", n, v)
   case "~=":
-    expr = `contains(concat(" ", @` + n + `, " "), concat(" ", ` + v + `, " "))`
+    expr = fmt.Sprintf(`contains(concat(" ", @%s, " "), concat(" ", %s, " "))`, n, v)
   case "|=":
-    expr = "(@" + n + "=" + v + " or " + "starts-with(@" + n + ", concat(" + v + `, "-")))`
+    expr = fmt.Sprintf(`(@%s=%s or starts-with(@%s, concat(%s, "-")))`, n, v, n, v)
   case "^=":
     expr = fmt.Sprintf("starts-with(@%s, %s)", n, v)
   case "$=":
@@ -349,7 +350,8 @@ func peek(lexeme Lexeme, input []byte) bool {
 }
 
 func main() {
-  sel := "div:nth-child(-3n+5), span:nth-of-type(+n-2)"
+  fmt.Println(pattern[MATCH_OP])
+  sel := "div span[foo='bar']"
   out, rem := selectors([]byte(sel), DEEP)
   fmt.Println(sel)
   fmt.Println(out, string(rem))
