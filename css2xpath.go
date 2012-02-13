@@ -106,8 +106,9 @@ func init() {
   pattern[PARENT_OF]      = `\s*>`
   pattern[ANCESTOR_OF]    = `\s+`
   for i, p := range pattern {
-    matcher[i], _ = rubex.Compile(`\A` + p)
+    matcher[i] = rubex.MustCompile(`\A` + p)
   }
+	println("init done")
 }
 
 type Scope int
