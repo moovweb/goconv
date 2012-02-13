@@ -4,7 +4,7 @@ package css2xpath
 import (
   "fmt"
 	"strings"
-	"github.com/moovweb/rubex/lib"
+	"rubex"
 )
 
 type Lexeme int
