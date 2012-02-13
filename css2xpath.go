@@ -108,6 +108,7 @@ func init() {
   for i, p := range pattern {
     matcher[i] = rubex.MustCompile(`\A` + p)
   }
+	println("init done")
 }
 
 type Scope int

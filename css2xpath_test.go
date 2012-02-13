@@ -15,9 +15,9 @@ func read(filename string) string {
 }
 
 func TestSelectors(t *testing.T) {
-  cssSelectors := strings.Split(string(read("../test/inputs")), "\n")
-  localXPaths  := strings.Split(string(read("../test/outputs-local")), "\n")
-  globalXPaths := strings.Split(string(read("../test/outputs-global")), "\n")
+  cssSelectors := strings.Split(string(read("./test/inputs")), "\n")
+  localXPaths  := strings.Split(string(read("./test/outputs-local")), "\n")
+  globalXPaths := strings.Split(string(read("./test/outputs-global")), "\n")
   
   for i, css := range cssSelectors {
     xpathG := strings.TrimSpace(Convert(css, GLOBAL))
