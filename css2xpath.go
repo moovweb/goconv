@@ -108,7 +108,7 @@ func init() {
   for i, p := range pattern {
     matcher[i] = rubex.MustCompile(`\A` + p)
   }
-	println("init done")
+	println("init() in css2xpath completed")
 }
 
 type Scope int
