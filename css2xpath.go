@@ -4,7 +4,7 @@ package css2xpath
 import (
   "fmt"
 	"strings"
-	"rubex"
+	"github.com/moovweb/rubex/lib"
 )
 
 type Lexeme int
@@ -106,7 +106,7 @@ func init() {
   pattern[PARENT_OF]      = `\s*>`
   pattern[ANCESTOR_OF]    = `\s+`
   for i, p := range pattern {
-    matcher[i], _ = rubex.Compile(`\A` + p)
+    matcher[i] = rubex.MustCompile(`\A` + p)
   }
 }
 
