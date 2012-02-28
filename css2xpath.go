@@ -4,7 +4,7 @@ package css2xpath
 import (
   "fmt"
 	"strings"
-	"rubex"
+	"rubex/lib"
 )
 
 type Lexeme int
