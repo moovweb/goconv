@@ -1,4 +1,5 @@
 package goconv
+
 // #cgo CFLAGS: -I/usr/include
 // #cgo LDFLAGS: -liconv
 // #include <iconv.h>
@@ -7,49 +8,50 @@ package goconv
 import "C"
 import (
 	"bytes"
-	"os"
+	"errors"
 	"io"
 	"unsafe"
+	"syscall"
 )
 
 type Iconv struct {
-	pIconv C.iconv_t
+	pIconv         C.iconv_t
 	fallbackPolicy int
-	fallback func([]byte, io.Writer, []byte) (int, os.Error)
-	fallbackIconv *Iconv
+	fallback       func([]byte, io.Writer, []byte) (int, error)
+	fallbackIconv  *Iconv
 }
 
 const (
-	DISCARD_UNRECOGNIZED = 0
-	KEEP_UNRECOGNIZED = 1
+	DISCARD_UNRECOGNIZED  = 0
+	KEEP_UNRECOGNIZED     = 1
 	NEXT_ENC_UNRECOGNIZED = 2
 )
 
 var (
-	NilIconvPointer = os.NewError("Nil iconv pointer")
-	NilFallbackIconv = os.NewError("Nil fallback iconv")
-	InvalidFallbackPolicy = os.NewError("Invalid fallback policy")
-	FallbackCannotAdvance = os.NewError("Fallback cannot advance conversion")
-	InvalidSequence = os.Errno(int(C.EILSEQ))
-	OutputBufferInsufficient = os.Errno(int(C.E2BIG))
-	IncompleteSequence = os.Errno(int(C.EINVAL))
-	InvalidArgument = os.Errno(int(C.EINVAL))
+	NilIconvPointer          = errors.New("Nil iconv pointer")
+	NilFallbackIconv         = errors.New("Nil fallback iconv")
+	InvalidFallbackPolicy    = errors.New("Invalid fallback policy")
+	FallbackCannotAdvance    = errors.New("Fallback cannot advance conversion")
+	InvalidSequence          = syscall.Errno(int(C.EILSEQ))
+	OutputBufferInsufficient = syscall.Errno(int(C.E2BIG))
+	IncompleteSequence       = syscall.Errno(int(C.EINVAL))
+	InvalidArgument          = syscall.Errno(int(C.EINVAL))
 )
 
-func fallbackDiscardUnrecognized(input []byte, out io.Writer, outBuf []byte) (bytesConverted int, err os.Error) {
+func fallbackDiscardUnrecognized(input []byte, out io.Writer, outBuf []byte) (bytesConverted int, err error) {
 	bytesConverted = len(input)
 	return
 }
 
-func fallbackKeepIntactUnrecognized(input []byte, out io.Writer, outBuf []byte) (bytesConverted int, err os.Error) {
+func fallbackKeepIntactUnrecognized(input []byte, out io.Writer, outBuf []byte) (bytesConverted int, err error) {
 	out.Write(input)
 	bytesConverted = len(input)
 	return
 }
 
-func OpenWithFallback(fromCode string, toCode string, fallbackPolicy int) (ic *Iconv, err os.Error) {
+func OpenWithFallback(fromCode string, toCode string, fallbackPolicy int) (ic *Iconv, err error) {
 	var pIconv C.iconv_t
-	
+
 	toCodeCharPtr := C.CString(toCode)
 	defer C.free(unsafe.Pointer(toCodeCharPtr))
 	fromCodeCharPtr := C.CString(fromCode)
@@ -79,12 +81,12 @@ func (ic *Iconv) SetFallback(fallbackIconv *Iconv) {
 	return
 }
 
-func Open(fromCode string, toCode string) (ic *Iconv, err os.Error) {
+func Open(fromCode string, toCode string) (ic *Iconv, err error) {
 	ic, err = OpenWithFallback(fromCode, toCode, DISCARD_UNRECOGNIZED)
 	return
 }
 
-func (ic *Iconv) Close() (err os.Error) {
+func (ic *Iconv) Close() (err error) {
 	_, err = C.iconv_close(ic.pIconv)
 	if ic.fallbackIconv != nil {
 		ic.fallbackIconv.Close()
@@ -93,7 +95,7 @@ func (ic *Iconv) Close() (err os.Error) {
 	return
 }
 
-func (ic *Iconv) convert(input []byte, out io.Writer, outBuf []byte) (bytesConverted int, err os.Error) {
+func (ic *Iconv) convert(input []byte, out io.Writer, outBuf []byte) (bytesConverted int, err error) {
 	inputLen := len(input)
 	if inputLen == 0 {
 		return
@@ -108,11 +110,11 @@ func (ic *Iconv) convert(input []byte, out io.Writer, outBuf []byte) (bytesConve
 	outputPtr := &outBuf[0]
 	outputPtrPtr := (**C.char)(unsafe.Pointer(&outputPtr))
 	outputBytesLeft := C.size_t(outputLen)
-	
+
 	inputPtr := &input[0]
 	inputPtrPtr := (**C.char)(unsafe.Pointer(&inputPtr))
 	inputBytesLeft := C.size_t(inputLen)
-		
+
 	_, err = C.iconv(ic.pIconv, inputPtrPtr, &inputBytesLeft, outputPtrPtr, &outputBytesLeft)
 	bytesConverted = inputLen - int(inputBytesLeft)
 	if int(outputBytesLeft) < outputLen {
@@ -122,7 +124,7 @@ func (ic *Iconv) convert(input []byte, out io.Writer, outBuf []byte) (bytesConve
 }
 
 //err returns the last error
-func (ic *Iconv) Conv(input []byte) (output []byte, err os.Error) {
+func (ic *Iconv) Conv(input []byte) (output []byte, err error) {
 	inputLen := len(input)
 	if inputLen == 0 {
 		output = input
@@ -132,7 +134,7 @@ func (ic *Iconv) Conv(input []byte) (output []byte, err os.Error) {
 	outBuf := make([]byte, inputLen)
 	offset := 0
 	bytesConverted := 0
-	
+
 	for offset < inputLen {
 		bytesConverted, err = ic.convert(input[offset:], buf, outBuf)
 		offset += bytesConverted
