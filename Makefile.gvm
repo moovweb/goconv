@@ -2,8 +2,8 @@ all: install
 build:
 	gb -b
 clean:
-	gb -c && make clean
+	gb -c
 install: build
 	gb -i
 test:
-	gb -t
+	go test -v

@@ -53,7 +53,7 @@ func TestIconvInputFromFile(t *testing.T) {
 	input, err := ioutil.ReadFile("gb2312_input.txt")
 	
 	if err != nil {
-		t.Errorf("err: %s\n", err.String())
+		t.Errorf("err: %s\n", err.Error())
 	}
 	
 	if string(input) != testData[0].other {
