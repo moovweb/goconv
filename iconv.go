@@ -10,8 +10,8 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"unsafe"
 	"syscall"
+	"unsafe"
 )
 
 type Iconv struct {
