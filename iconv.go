@@ -32,10 +32,10 @@ var (
 	NilFallbackIconv         = errors.New("Nil fallback iconv")
 	InvalidFallbackPolicy    = errors.New("Invalid fallback policy")
 	FallbackCannotAdvance    = errors.New("Fallback cannot advance conversion")
-	InvalidSequence          = syscall.Errno(int32(C.EILSEQ))
-	OutputBufferInsufficient = syscall.Errno(int32(C.E2BIG))
-	IncompleteSequence       = syscall.Errno(int32(C.EINVAL))
-	InvalidArgument          = syscall.Errno(int32(C.EINVAL))
+	InvalidSequence          = syscall.Errno(int(C.EILSEQ))
+	OutputBufferInsufficient = syscall.Errno(int(C.E2BIG))
+	IncompleteSequence       = syscall.Errno(int(C.EINVAL))
+	InvalidArgument          = syscall.Errno(int(C.EINVAL))
 )
 
 func fallbackDiscardUnrecognized(input []byte, out io.Writer, outBuf []byte) (bytesConverted int, err error) {
@@ -116,9 +116,8 @@ func (ic *Iconv) convert(input []byte, out io.Writer, outBuf []byte) (bytesConve
 	inputBytesLeft := C.size_t(inputLen)
 
 	_, err = C.iconv(ic.pIconv, inputPtrPtr, &inputBytesLeft, outputPtrPtr, &outputBytesLeft)
-	// casting to int32 first and then to int because int is 64 bits in go1.1
-	bytesConverted = inputLen - int(int32(inputBytesLeft))
-	if int(int32(outputBytesLeft)) < outputLen {
+	bytesConverted = inputLen - int(inputBytesLeft)
+	if int(outputBytesLeft) < outputLen {
 		out.Write(outBuf[:outputLen-int(outputBytesLeft)])
 	}
 	return
