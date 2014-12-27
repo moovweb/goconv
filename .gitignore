@@ -1,1 +1,5 @@
 _obj/
+
+#IntelliJ IDEA
+.idea/
+*.iml

@@ -4,12 +4,12 @@
 package goconv
 
 import (
-	"testing"
 	"io/ioutil"
 	"strconv"
+	"testing"
 )
 
-var testData = []struct{utf8, other, otherEncoding string} {
+var testData = []struct{ utf8, other, otherEncoding string }{
 	{"新浪", "\xd0\xc2\xc0\xcb", "gb2312"},
 	{"これは漢字です。", "\x82\xb1\x82\xea\x82\xcd\x8a\xbf\x8e\x9a\x82\xc5\x82\xb7\x81B", "SJIS"},
 	{"これは漢字です。", "S0\x8c0o0\"oW[g0Y0\x020", "UTF-16LE"},
@@ -51,11 +51,11 @@ func TestIconvInputFromFile(t *testing.T) {
 	}
 
 	input, err := ioutil.ReadFile("gb2312_input.txt")
-	
+
 	if err != nil {
 		t.Errorf("err: %s\n", err.Error())
 	}
-	
+
 	if string(input) != testData[0].other {
 		t.Errorf("the input from file does not match what it should be")
 		return
@@ -138,32 +138,31 @@ func TestKeepUnrecognized(t *testing.T) {
 func TestMixedEncodings(t *testing.T) {
 	input := testData[0].other + "; " + testData[1].other + "; " + testData[0].other
 	expected := testData[0].utf8 + "; " + testData[1].utf8 + "; " + testData[0].utf8
-	
+
 	ic, err := OpenWithFallback(testData[0].otherEncoding, "UTF-8", NEXT_ENC_UNRECOGNIZED)
 	if err != nil {
 		t.Errorf("Error on opening: %s\n", err)
 		return
 	}
-	
+
 	fallbackic, err := Open(testData[1].otherEncoding, "UTF-8")
 	if err != nil {
 		t.Errorf("Error on opening: %s\n", err)
 		return
 	}
 	ic.SetFallback(fallbackic)
-	
+
 	b, err := ic.Conv([]byte(input))
 	if err != nil {
 		t.Errorf("Error on conversion: %s\n", err)
 		return
 	}
-	
+
 	println(strconv.QuoteToASCII(expected))
 	println(strconv.QuoteToASCII(string(b)))
-	
+
 	if string(b) != expected {
 		t.Errorf("mix failed")
 	}
 	ic.Close()
 }
-
