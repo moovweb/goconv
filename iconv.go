@@ -1,9 +1,12 @@
 package goconv
 
-// #cgo CFLAGS: -I../../clibs/include
-// #include <iconv.h>
-// #include <errno.h>
-// #include <stdlib.h>
+/*
+#cgo CFLAGS: -I/usr/include
+#cgo LDFLAGS: -liconv -L/usr/local
+#include <iconv.h>
+#include <errno.h>
+#include <stdlib.h>
+*/
 import "C"
 import (
 	"bytes"
